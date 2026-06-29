@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html>
+  
+  <head>
+    //sidebar.html
+    <base target="_top" />
+    <style>
+      body { font-family: Arial, sans-serif; padding: 12px; }
+      h2 { margin: 0 0 10px 0; }
+      .grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+      label { font-size: 12px; color: #333; display:block; margin-bottom:4px; }
+      input, select, textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        font-size: 13px;
+      }
+      textarea { min-height: 90px; resize: vertical; }
+      .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .actions { display: flex; gap: 10px; margin-top: 10px; }
+      button {
+        padding: 10px;
+        border: 0;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 700;
+      }
+      .primary { background: #ff7a00; color: #fff; flex: 1; }
+      .ghost { background: #eee; flex: 1; }
+      .smallBtn { background:#eee; padding:8px 10px; border-radius:10px; }
+      .msg { margin-top: 10px; font-size: 13px; }
+      .ok { color: #0a7a2a; }
+      .err { color: #b00020; }
+      .hint { font-size: 12px; color: #666; margin-top: 4px; }
+      details summary { cursor:pointer; }
+    </style>
+  </head>
+
+  <body>
+    <h2>Cadastro — DadosClientes</h2>
+
+    <div class="grid">
+      <div class="row2">
+        <div>
+          <label>Data Viagem *</label>
+          <input type="date" id="dataViagem" />
+        </div>
+        <div>
+          <label>Sentido *</label>
+          <select id="sentido"></select>
+        </div>
+      </div>
+
+      <div>
+        <label>DE/PARA *</label>
+        <input type="text" id="dePara" placeholder="Ex: São Paulo/SP → Recife/PE" />
+      </div>
+
+      <div>
+        <label>Nome *</label>
+        <input type="text" id="nome" />
+      </div>
+
+      <div>
+        <label>Telefone *</label>
+        <input type="text" id="telefone" placeholder="DDD + número" />
+        <div class="hint">Pode colar com espaços, o sistema limpa.</div>
+      </div>
+
+      <div class="row2">
+        <div>
+          <label>CPF</label>
+          <input type="text" id="cpf" placeholder="Somente números ou com pontuação" />
+        </div>
+        <div>
+          <label>Email</label>
+          <input type="email" id="email" />
+        </div>
+      </div>
+
+      <div>
+        <label>Endereço do contratante</label>
+        <input type="text" id="endContratante" />
+      </div>
+
+      <div>
+        <label>Dados Pet *</label>
+        <textarea id="dadosPet" placeholder="Ex: 1 cão SRD porte M, 2 anos, macho..."></textarea>
+      </div>
+
+      <div class="row2">
+        <div>
+          <label>Qtde Pets</label>
+          <input type="number" id="qtdePets" min="1" />
+        </div>
+        <div>
+          <label>Caixa</label>
+          <input type="text" id="caixa" placeholder="Ex: 3 / 4 e 5" />
+        </div>
+      </div>
+
+      <!-- EMBARQUE -->
+      <div>
+        <label>Responsável no Embarque</label>
+        <div class="row2" style="grid-template-columns: 1fr auto;">
+          <input type="text" id="respEmbarque" />
+          <button type="button" class="smallBtn" onclick="copiarContratanteParaEmbarque()">↩ usar contratante</button>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div>
+          <label>Telefone Resp Embarque</label>
+          <input type="text" id="telRespEmbarque" />
+        </div>
+        <div>
+          <label>PEE?</label>
+          <select id="pee"></select>
+        </div>
+      </div>
+
+      <div>
+        <label>Local de Embarque</label>
+
+        <div id="wrapEmbPonto">
+          <select id="localEmbarquePonto">
+            <option value="">Selecionar ponto...</option>
+          </select>
+          <div class="hint">Ordenado por cidade.</div>
+        </div>
+
+        <div id="wrapEmbEndereco" style="display:none;">
+          <label class="hint" style="margin:0 0 4px 0;">Endereço completo (porta a porta)</label>
+          <textarea id="localEmbarqueEndereco" placeholder="Rua, número, bairro, cidade/UF, CEP"></textarea>
+          <button type="button" class="smallBtn" style="width:100%; margin-top:6px;" onclick="usarEnderecoContratante('emb')">
+            ↩ usar end. contratante
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <label>Coleta</label>
+        <input type="text" id="coleta" placeholder="Ex: Porta a porta / Ponto" />
+      </div>
+
+      <!-- DESEMBARQUE -->
+      <div>
+        <label>Responsável da Desembarque</label>
+        <div class="row2" style="grid-template-columns: 1fr auto;">
+          <input type="text" id="respDesembarque" />
+          <button type="button" class="smallBtn" onclick="copiarContratanteParaDesembarque()">↩ usar contratante</button>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div>
+          <label>Telefone Resp Desembarque</label>
+          <input type="text" id="telRespDesembarque" />
+        </div>
+        <div>
+          <label>PED?</label>
+          <select id="ped"></select>
+        </div>
+      </div>
+
+      <div>
+        <label>Local de Desembarque</label>
+
+        <div id="wrapDesPonto">
+          <select id="localDesembarquePonto">
+            <option value="">Selecionar ponto...</option>
+          </select>
+        </div>
+
+        <div id="wrapDesEndereco" style="display:none;">
+          <label class="hint" style="margin:0 0 4px 0;">Endereço completo (porta a porta)</label>
+          <textarea id="localDesembarqueEndereco" placeholder="Rua, número, bairro, cidade/UF, CEP"></textarea>
+          <button type="button" class="smallBtn" style="width:100%; margin-top:6px;" onclick="usarEnderecoContratante('des')">
+            ↩ usar end. contratante
+          </button>
+        </div>
+      </div>
+
+      <!-- VALORES -->
+      <div class="row2">
+        <div>
+          <label>Valor acordado</label>
+          <input type="text" id="valorAcordado" placeholder="Ex: 1800" oninput="calcularValores(false)" />
+        </div>
+        <div>
+          <label>% Sinal</label>
+          <input type="number" id="pctSinal" value="30" min="0" max="100" oninput="calcularValores(true)" />
+          <div class="hint">Ex: 20 / 30 / 40</div>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div>
+          <label>Sinal</label>
+          <input type="text" id="sinal" oninput="recalcularRestantePorSinal()" />
+          <div class="hint">Pode editar manualmente.</div>
+        </div>
+        <div>
+          <label>Valor Pendente</label>
+          <input type="text" id="valorPendente" readonly />
+        </div>
+      </div>
+
+      <div>
+        <label>obs</label>
+        <textarea id="obs"></textarea>
+      </div>
+
+      <details>
+        <summary>Campos opcionais</summary>
+        <div class="grid" style="margin-top:10px;">
+          <div>
+            <label>Link Contrato</label>
+            <input type="text" id="linkContrato" placeholder="Ex: 📄 Ver contrato ou URL" />
+          </div>
+          <div class="row2">
+            <div>
+              <label>Enviado?</label>
+              <input type="text" id="enviado" placeholder="Ex: S / N" />
+            </div>
+            <div>
+              <label>ContratoGerado</label>
+              <input type="text" id="contratoGerado" placeholder="Ex: G" />
+            </div>
+          </div>
+          <div>
+            <label>falta</label>
+            <input type="text" id="falta" />
+          </div>
+        </div>
+      </details>
+
+      <div class="actions">
+        <button class="primary" type="button" onclick="salvar()">Salvar</button>
+        <button class="ghost" type="button" onclick="limpar()">Limpar</button>
+      </div>
+
+      <div id="msg" class="msg"></div>
+    </div>
+
+    <script>
+      function isoToBR(iso) {
+        if (!iso) return "";
+        const [y, m, d] = String(iso).split("-");
+        if (!y || !m || !d) return iso;
+        return `${d}/${m}/${y}`;
+      }
+
+      function byId(id) { return document.getElementById(id); }
+
+      function setMsg(text, ok) {
+        const el = byId("msg");
+        el.textContent = text || "";
+        el.className = "msg " + (ok ? "ok" : "err");
+      }
+
+      function limpar() {
+        document.querySelectorAll("input, textarea").forEach(el => {
+          if (!el.hasAttribute("readonly")) el.value = "";
+        });
+        document.querySelectorAll("select").forEach(el => el.selectedIndex = 0);
+        byId("sinal").value = "";
+        byId("valorPendente").value = "";
+        atualizarCamposLocais();
+        setMsg("", true);
+      }
+
+      function toNumberBR(v) {
+        if (v === null || v === undefined) return NaN;
+        const s = String(v).trim();
+        if (!s) return NaN;
+        const normalized = s.replace(/\./g, "").replace(/,/g, ".");
+        return Number(normalized);
+      }
+
+      function formatInt(n) {
+        if (!isFinite(n)) return "";
+        return Math.round(n).toString();
+      }
+
+      // forceAuto=true quando mexer no % (pra voltar ao automático)
+      function calcularValores(forceAuto) {
+        const valor = toNumberBR(byId("valorAcordado").value);
+        const pct = Number(byId("pctSinal").value);
+
+        if (!isFinite(valor) || valor <= 0 || !isFinite(pct) || pct < 0) return;
+
+        if (!forceAuto) {
+          const sinalDigitado = toNumberBR(byId("sinal").value);
+          if (isFinite(sinalDigitado) && sinalDigitado >= 0) {
+            byId("valorPendente").value = formatInt(valor - sinalDigitado);
+            return;
+          }
+        }
+
+        const sinalCalc = Math.round(valor * (pct / 100));
+        byId("sinal").value = formatInt(sinalCalc);
+        byId("valorPendente").value = formatInt(valor - sinalCalc);
+      }
+
+      function recalcularRestantePorSinal() {
+        const valor = toNumberBR(byId("valorAcordado").value);
+        const sinal = toNumberBR(byId("sinal").value);
+        if (!isFinite(valor) || valor <= 0 || !isFinite(sinal) || sinal < 0) {
+          byId("valorPendente").value = "";
+          return;
+        }
+        byId("valorPendente").value = formatInt(valor - sinal);
+      }
+
+      function copiarContratanteParaEmbarque() {
+        const nome = byId("nome").value || "";
+        const telefone = byId("telefone").value || "";
+        if (!nome) return setMsg("Preencha o Nome do contratante primeiro.", false);
+        byId("respEmbarque").value = nome;
+        byId("telRespEmbarque").value = telefone;
+        setMsg("Dados do contratante copiados para embarque ✅", true);
+      }
+
+      function copiarContratanteParaDesembarque() {
+        const nome = byId("nome").value || "";
+        const telefone = byId("telefone").value || "";
+        if (!nome) return setMsg("Preencha o Nome do contratante primeiro.", false);
+        byId("respDesembarque").value = nome;
+        byId("telRespDesembarque").value = telefone;
+        setMsg("Dados do contratante copiados para desembarque ✅", true);
+      }
+
+      function usarEnderecoContratante(tipo) {
+        const endereco = (byId("endContratante").value || "").trim();
+        if (!endereco) return setMsg("Preencha o Endereço do contratante primeiro.", false);
+        if (tipo === "emb") byId("localEmbarqueEndereco").value = endereco;
+        else byId("localDesembarqueEndereco").value = endereco;
+        setMsg("Endereço do contratante copiado ✅", true);
+      }
+
+      function atualizarCamposLocais() {
+        const pee = (byId("pee").value || "").toUpperCase();
+        const ped = (byId("ped").value || "").toUpperCase();
+
+        if (pee === "S") {
+          byId("wrapEmbPonto").style.display = "";
+          byId("wrapEmbEndereco").style.display = "none";
+        } else {
+          byId("wrapEmbPonto").style.display = "none";
+          byId("wrapEmbEndereco").style.display = "";
+        }
+
+        if (ped === "S") {
+          byId("wrapDesPonto").style.display = "";
+          byId("wrapDesEndereco").style.display = "none";
+        } else {
+          byId("wrapDesPonto").style.display = "none";
+          byId("wrapDesEndereco").style.display = "";
+        }
+      }
+
+      function getLocalEmbarqueFinal() {
+        const pee = (byId("pee").value || "").toUpperCase();
+        return (pee === "S")
+          ? (byId("localEmbarquePonto").value || "")
+          : (byId("localEmbarqueEndereco").value || "").trim();
+      }
+
+      function getLocalDesembarqueFinal() {
+        const ped = (byId("ped").value || "").toUpperCase();
+        return (ped === "S")
+          ? (byId("localDesembarquePonto").value || "")
+          : (byId("localDesembarqueEndereco").value || "").trim();
+      }
+
+      google.script.run.withSuccessHandler(meta => {
+        const s = byId("sentido");
+        (meta.sentidos || []).forEach(v => {
+          const opt = document.createElement("option");
+          opt.value = v; opt.textContent = v;
+          s.appendChild(opt);
+        });
+
+        const pee = byId("pee");
+        const ped = byId("ped");
+        (meta.simNao || []).forEach(v => {
+          const o1 = document.createElement("option");
+          o1.value = v; o1.textContent = v;
+          pee.appendChild(o1);
+
+          const o2 = document.createElement("option");
+          o2.value = v; o2.textContent = v;
+          ped.appendChild(o2);
+        });
+
+        byId("pee").addEventListener("change", atualizarCamposLocais);
+        byId("ped").addEventListener("change", atualizarCamposLocais);
+        atualizarCamposLocais();
+      }).getFormMeta();
+
+      google.script.run.withSuccessHandler(lista => {
+  const selectEmb = byId("localEmbarquePonto");
+  const selectDes = byId("localDesembarquePonto");
+
+  (lista || []).forEach(p => {
+    const textoExibicao = `${p.cidade}/${p.estado} - ${p.local}`;
+    const valorGravado = `${p.local} - ${p.endereco}`;
+
+    const opt1 = document.createElement("option");
+    opt1.value = valorGravado;
+    opt1.textContent = textoExibicao;
+    selectEmb.appendChild(opt1);
+
+    const opt2 = document.createElement("option");
+    opt2.value = valorGravado;
+    opt2.textContent = textoExibicao;
+    selectDes.appendChild(opt2);
+  });
+}).getPontosEncontro();
+
+      function salvar() {
+        setMsg("Salvando...", true);
+
+        const telefoneLimpo = (byId("telefone").value || "").replace(/[^\d+]/g, "");
+        const telEmbLimpo = (byId("telRespEmbarque").value || "").replace(/[^\d+]/g, "");
+        const telDesLimpo = (byId("telRespDesembarque").value || "").replace(/[^\d+]/g, "");
+
+        const payload = {
+          dataViagem: isoToBR(byId("dataViagem").value),
+          sentido: byId("sentido").value,
+          dePara: byId("dePara").value,
+
+          nome: byId("nome").value,
+          telefone: telefoneLimpo,
+          cpf: byId("cpf").value,
+          email: byId("email").value,
+          endContratante: byId("endContratante").value,
+
+          dadosPet: byId("dadosPet").value,
+          qtdePets: byId("qtdePets").value,
+          caixa: byId("caixa").value,
+
+          respEmbarque: byId("respEmbarque").value,
+          telRespEmbarque: telEmbLimpo,
+          pee: byId("pee").value,
+          localEmbarque: getLocalEmbarqueFinal(),
+          coleta: byId("coleta").value,
+
+          respDesembarque: byId("respDesembarque").value,
+          telRespDesembarque: telDesLimpo,
+          ped: byId("ped").value,
+          localDesembarque: getLocalDesembarqueFinal(),
+
+          valorAcordado: byId("valorAcordado").value,
+          sinal: byId("sinal").value,
+          valorPendente: byId("valorPendente").value,
+
+          obs: byId("obs").value,
+          linkContrato: byId("linkContrato").value,
+          enviado: byId("enviado").value,
+          contratoGerado: byId("contratoGerado").value,
+          falta: byId("falta").value
+        };
+
+        google.script.run
+          .withSuccessHandler(res => {
+            if (res && res.ok) {
+              setMsg(res.message, true);
+              limpar();
+            } else {
+              setMsg((res && res.message) ? res.message : "Erro ao salvar.", false);
+            }
+          })
+          .withFailureHandler(err => setMsg(String(err.message || err), false))
+          .salvarDados(payload);
+      }
+    </script>
+  </body>
+</html>
