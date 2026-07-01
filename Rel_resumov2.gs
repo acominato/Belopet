@@ -1,5 +1,5 @@
 //rel_resumov2.gs
-function doGet(e) {
+function rel_resumov2(e) {
   var ss = SpreadsheetApp.openById("112Dm9XVjPwFFBkMLOC0_Q9lacmXJlAcQk3Cuh3nei64");
   var sheet = ss.getSheetByName("DadosClientes");
   var data = sheet.getDataRange().getValues();

@@ -1,7 +1,7 @@
 /***************
- * Clientes.gs Ã¢â‚¬â€ BeloPet
- * DadosClientes + CRM + WebApp
- * Inclui novo cadastro e atualiza cadastro existente por linhaEdicao
+ * Clientes.gs â€” BeloPet â€” VERSÃƒO ESTÃVEL EMERGÃŠNCIA
+ * Cadastro externo DadosClientes + CRM + busca/ediÃ§Ã£o por IDCadastro.
+ * Importante: no projeto inteiro deve existir APENAS UM function doGet(e) ativo: este aqui.
  ***************/
 
 const BP_SHEETS = {
@@ -11,126 +11,137 @@ const BP_SHEETS = {
 
 const BP_SS_ID = "112Dm9XVjPwFFBkMLOC0_Q9lacmXJlAcQk3Cuh3nei64";
 
-function BP_openDadosClientesSidebar() {
-  const html = HtmlService.createHtmlOutputFromFile("Sidebar")
-    .setTitle("Cadastro Ã¢â‚¬â€ DadosClientes");
-  SpreadsheetApp.getUi().showSidebar(html);
-}
+/* Sidebar antiga desativada. O cadastro atual usa clientes.html externo.
+function BP_openDadosClientesSidebar() {}
+*/
 
-function getFormMeta() {
-  return {
-    sentidos: ["SOBE", "DESCE", "SPSUL", "DF", "Ã¢â‚¬â€"],
-    simNao: ["S", "N", "Ã¢â‚¬â€"],
-  };
-}
+function doGet(e) {
+  const params = (e && e.parameter) ? e.parameter : {};
+  const callback = params.callback || "";
 
-function getPontosEncontro() {
-  const ss = SpreadsheetApp.openById(BP_SS_ID);
-  const sh = ss.getSheetByName(BP_SHEETS.PONTOS);
-  if (!sh) return [];
+  try {
+    const acao = String(params.acao || "").trim();
 
-  const lastRow = sh.getLastRow();
-  if (lastRow < 2) return [];
+    if (!acao || acao === "ping") {
+      return jsonpOutput_({ ok: true, message: "Clientes.gs ativo", agora: new Date().toISOString() }, callback);
+    }
 
-  const data = sh.getRange(2, 1, lastRow - 1, 5).getValues();
+    if (acao === "buscar_dados_cliente") {
+      return jsonpOutput_(buscarDadosCliente_(params.termo || ""), callback);
+    }
+    if (acao === "gerar_contrato_cliente") {
+      return jsonpOutput_(gerarContratoClienteWeb_(params.idCadastro || ""), callback);
+    }
 
-  const lista = data
-    .map(r => ({
-      id: r[0],
-      local: r[1],
-      endereco: r[2],
-      cidade: r[3],
-      estado: r[4],
-    }))
-    .filter(p => p && (p.local || p.endereco || p.cidade || p.estado));
-
-  lista.sort((a, b) => {
-    const ca = String(a.cidade || "").toLowerCase();
-    const cb = String(b.cidade || "").toLowerCase();
-    if (ca < cb) return -1;
-    if (ca > cb) return 1;
-    return String(a.local || "").localeCompare(String(b.local || ""));
-  });
-
-  return lista;
+    return jsonpOutput_({ ok: false, message: "AÃ§Ã£o GET nÃ£o reconhecida: " + acao }, callback);
+  } catch (err) {
+    return jsonpOutput_({ ok: false, message: "Erro no doGet: " + (err && err.message ? err.message : err) }, callback);
+  }
 }
 
 function doPost(e) {
   try {
-    const payload = JSON.parse(e.postData.contents || "{}");
+    const payload = JSON.parse((e && e.postData && e.postData.contents) ? e.postData.contents : "{}");
     const acao = String(payload.acao || "").trim();
 
-    if (acao === "buscar_dados_cliente") {
-      return jsonOutput_(buscarDadosCliente_(payload));
-    }
+    if (acao === "atualizar_dados_cliente") return jsonOutput_(atualizarDadosCliente_(payload));
+    if (acao === "incluir_dados_cliente") return jsonOutput_(salvarDados(payload));
 
-    // IMPORTANTE: atualizar precisa vir ANTES do salvar padrÃ£o.
-    if (acao === "atualizar_dados_cliente") {
-      return jsonOutput_(atualizarDadosCliente_(payload));
-    }
+    const pareceCRM = acao === "orcamento_crm" || payload.modalidade || payload.valorCompartilhado || payload.valorExclusivo || payload.mensagemWhatsApp;
+    if (pareceCRM) return jsonOutput_(salvarOrcamentoCRM_(payload));
 
-    if (acao === "incluir_dados_cliente") {
-      return jsonOutput_(salvarDados(payload));
-    }
-
-    const pareceCRM =
-      acao === "orcamento_crm" ||
-      payload.modalidade ||
-      payload.valorCompartilhado ||
-      payload.valorExclusivo ||
-      payload.mensagemWhatsApp;
-
-    if (pareceCRM) {
-      return jsonOutput_(salvarOrcamentoCRM_(payload));
-    }
-
-    // Compatibilidade com formulÃƒÂ¡rios antigos sem acao.
     return jsonOutput_(salvarDados(payload));
-
   } catch (err) {
-    return jsonOutput_({
-      ok: false,
-      message: "Erro no doPost: " + (err && err.message ? err.message : err)
-    });
+    return jsonOutput_({ ok: false, message: "Erro no doPost: " + (err && err.message ? err.message : err) });
   }
 }
 
-function jsonOutput_(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+function buscarDadosCliente_(termo) {
+  termo = String(termo || "").trim();
+  if (!termo) return { ok: false, message: "Informe ID, telefone, CPF ou nome para buscar.", resultados: [] };
 
-function doGet(e) {
-  try {
-    const params = (e && e.parameter) ? e.parameter : {};
-    const acao = String(params.acao || "").trim();
-    let resposta;
+  const ss = SpreadsheetApp.openById(BP_SS_ID);
+  const sh = ss.getSheetByName(BP_SHEETS.DADOS);
+  if (!sh) throw new Error('Aba "DadosClientes" nÃ£o encontrada.');
 
-    if (acao === "buscar_dados_cliente") {
-      resposta = buscarDadosCliente_({ termo: params.termo || "" });
-    } else {
-      resposta = { ok: false, message: "AÃ§Ã£o GET invÃ¡lida." };
+  const lastRow = sh.getLastRow();
+  const lastCol = sh.getLastColumn();
+  if (lastRow < 2) return { ok: true, resultados: [] };
+
+  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  const headerMap = buildHeaderMap_(headers);
+  const display = sh.getRange(2, 1, lastRow - 1, lastCol).getDisplayValues();
+  const values = sh.getRange(2, 1, lastRow - 1, lastCol).getValues();
+
+  const termoNorm = normalizarBusca_(termo);
+  const termoDig = somenteDigitos_(termo);
+  const resultados = [];
+
+  for (let i = 0; i < display.length; i++) {
+    const rowNumber = i + 2;
+    const rowDisplay = display[i];
+    const rowValues = values[i];
+
+    const idCadastro = cellFlex_(rowDisplay, rowValues, headerMap, ["IDCadastro", "ID Cadastro"]);
+    const nome = cellFlex_(rowDisplay, rowValues, headerMap, ["Nome"]);
+    const telefone = cellFlex_(rowDisplay, rowValues, headerMap, ["Telefone", "Telefone Cliente", "Celular", "WhatsApp", "Whatsapp", "Fone"]);
+    const cpf = cellFlex_(rowDisplay, rowValues, headerMap, ["CPF", "Cpf", "CPF do contratante", "Documento", "Documento CPF"]);
+    const dePara = cellFlex_(rowDisplay, rowValues, headerMap, ["DE/PARA", "De Para"]);
+    const dadosPet = cellFlex_(rowDisplay, rowValues, headerMap, ["Dados Pet"]);
+
+    const blocoTexto = normalizarBusca_([idCadastro, nome, telefone, cpf, normalizarCPF_(cpf), dePara, dadosPet].join(" "));
+    const blocoDig = somenteDigitos_([idCadastro, telefone, cpf, normalizarCPF_(cpf)].join(" "));
+
+    const bateTexto = termoNorm && blocoTexto.indexOf(termoNorm) !== -1;
+    const bateDigitos = termoDig.length >= 3 && blocoDig.indexOf(termoDig) !== -1;
+
+    if (bateTexto || bateDigitos) {
+      resultados.push(montarRegistroCliente_(rowNumber, rowDisplay, rowValues, headerMap, headers));
+      if (resultados.length >= 30) break;
     }
-
-    if (params.callback) {
-      return jsonpOutput_(params.callback, resposta);
-    }
-    return jsonOutput_(resposta);
-
-  } catch (err) {
-    const resposta = { ok: false, message: "Erro no doGet: " + (err && err.message ? err.message : err) };
-    const params = (e && e.parameter) ? e.parameter : {};
-    if (params.callback) return jsonpOutput_(params.callback, resposta);
-    return jsonOutput_(resposta);
   }
+
+  return { ok: true, resultados: resultados };
 }
 
-function jsonpOutput_(callback, obj) {
-  const safeCallback = String(callback || "callback").replace(/[^a-zA-Z0-9_$\.]/g, "");
-  return ContentService
-    .createTextOutput(safeCallback + "(" + JSON.stringify(obj) + ");")
-    .setMimeType(ContentService.MimeType.JAVASCRIPT);
+function montarRegistroCliente_(rowNumber, rowDisplay, rowValues, headerMap, headers) {
+  function vf(nomes) { return cellFlex_(rowDisplay, rowValues, headerMap, nomes); }
+
+  return {
+    linhaEdicao: rowNumber,
+    idCadastro: vf(["IDCadastro", "ID Cadastro"]),
+    dataViagem: vf(["Data Viagem"]),
+    dePara: vf(["DE/PARA", "De Para"]),
+    sentido: vf(["Sentido"]),
+    nome: vf(["Nome"]),
+    telefone: limparApostrofo_(vf(["Telefone", "Telefone Cliente", "Celular", "WhatsApp", "Whatsapp", "Fone"])),
+    cpf: vf(["CPF"]), //limparApostrofo_(vf(["CPF", "Cpf", "CPF do contratante", "Documento", "Documento CPF"])),
+    email: vf(["Email", "E-mail"]),
+    endContratante: vf(["EndereÃ§o do contratante", "Endereco do contratante", "EndereÃ§o Contratante", "Endereco Contratante"]),
+    dadosPet: vf(["Dados Pet"]),
+    qtdePets: vf(["Qtde Pets", "Qtd Pets", "Quantidade Pets"]),
+    caixa: vf(["Caixa"]),
+    respEmbarque: vf(["ResponsÃ¡vel no Embarque", "Responsavel no Embarque"]),
+    telRespEmbarque: limparApostrofo_(vf(["Telefone Resp Embarque", "Telefone ResponsÃ¡vel no Embarque", "Telefone Responsavel no Embarque", "Tel Resp Embarque"])),
+    pee: vf(["PEE?", "PEE"]),
+    localEmbarque: vf(["Local de Embarque"]),
+    coleta: vf(["Coleta"]),
+    respDesembarque: vf(["ResponsÃ¡vel da Desembarque", "Responsavel da Desembarque", "ResponsÃ¡vel no Desembarque", "Responsavel no Desembarque"]),
+    telRespDesembarque: limparApostrofo_(vf(["Telefone Resp Desembarque", "Telefone ResponsÃ¡vel da Desembarque", "Telefone Responsavel da Desembarque", "Tel Resp Desembarque"])),
+    ped: vf(["PED?", "PED"]),
+    localDesembarque: vf(["Local de Desembarque"]),
+    valorAcordado: vf(["Valor acordado"]),
+    sinal: vf(["Sinal"]),
+    restante: vf(["Restante"]),
+    valorPendente: vf(["Restante", "Valor Pendente"]),
+    obs: vf(["Obs", "ObservaÃ§Ã£o", "Observacao"]),
+    linkContrato: vf(["Link Contrato"]),
+    enviado: vf(["Enviado?", "Enviado"]),
+    contratoGerado: vf(["ContratoGerado", "Contrato Gerado"]),
+    falta: vf(["falta", "Falta"]),
+    _debugCampos: montarDebugCamposLinha_(rowDisplay, rowValues, headers),
+    _debugResumo: "Linha " + rowNumber + " retornada com " + headers.length + " colunas"
+  };
 }
 
 function salvarDados(payload) {
@@ -139,281 +150,121 @@ function salvarDados(payload) {
     const sh = ss.getSheetByName(BP_SHEETS.DADOS);
     if (!sh) throw new Error('Aba "DadosClientes" nÃ£o encontrada.');
 
-    const rowIndex = encontrarPrimeiraLinhaVaziaDadosClientes_(sh);
+    const headerMap = getHeaderMapFromSheet_(sh);
+    const lastRow = sh.getLastRow();
+    sh.insertRowAfter(lastRow);
+    const rowIndex = lastRow + 1;
 
-    escreverDadosClienteNaLinha_(sh, rowIndex, payload, { preservarContrato: false });
+    if (!payload.idCadastro) payload.idCadastro = gerarProximoIDCadastro_(sh, headerMap);
 
-    return { ok: true, message: "Cadastro incluÃ­do âœ…", rowIndex: rowIndex };
+    gravarPayloadDadosClienteNaLinha_(sh, headerMap, rowIndex, payload, { modo: "incluir", preservarCamposGeradosVazios: false });
 
+    return { ok: true, row: rowIndex, idCadastro: payload.idCadastro, message: "Cadastro salvo âœ…" };
   } catch (e) {
-    return { ok: false, message: "Erro ao salvar: " + (e && e.message ? e.message : e) };
+    return { ok: false, message: "Erro ao salvar cadastro: " + (e && e.message ? e.message : e) };
   }
-}
-
-function encontrarPrimeiraLinhaVaziaDadosClientes_(sh) {
-  const startRow = 2;
-  const lastRow = Math.max(sh.getLastRow(), startRow);
-  const colNome = 5; // coluna E = Nome
-
-  const valores = sh.getRange(startRow, colNome, lastRow - startRow + 1, 1).getValues();
-
-  for (let i = 0; i < valores.length; i++) {
-    if (!String(valores[i][0] || "").trim()) {
-      return startRow + i;
-    }
-  }
-
-  return lastRow + 1;
-}
-
-
-function buscarDadosCliente_(payload) {
-  const termoOriginal = String(payload.termo || "").trim();
-  const termo = normalizarBusca_(termoOriginal);
-  const termoDigitos = somenteDigitos_(termoOriginal);
-
-  if (!termoOriginal) {
-    return { ok: false, message: "Termo de busca vazio.", resultados: [] };
-  }
-
-  const ss = SpreadsheetApp.openById(BP_SS_ID);
-  const sh = ss.getSheetByName(BP_SHEETS.DADOS);
-  if (!sh) throw new Error('Aba "DadosClientes" nÃ£o encontrada.');
-
-  const lastRow = sh.getLastRow();
-  const lastCol = sh.getLastColumn();
-  if (lastRow < 2 || lastCol < 1) {
-    return { ok: true, resultados: [] };
-  }
-
-  // getDisplayValues() Ã© essencial: preserva CPF/telefone/valores como aparecem na tela,
-  // inclusive zero Ã  esquerda e formataÃ§Ã£o com R$.
-  const values = sh.getRange(1, 1, lastRow, lastCol).getDisplayValues();
-  const headers = values[0] || [];
-  const headerMap = buildHeaderMap_(headers);
-
-  function col(nome) {
-    const idx = findHeaderIndex_(headerMap, nome);
-    return idx === undefined ? -1 : idx;
-  }
-
-  function val(linha, idx) {
-    return idx >= 0 ? String(linha[idx] || "").trim() : "";
-  }
-
-  const c = {
-    dataViagem: col("Data Viagem"),
-    dePara: col("DE/PARA"),
-    sentido: col("Sentido"),
-    nome: col("Nome"),
-    endContratante: col("EndereÃ§o do contratante"),
-    cpf: col("CPF"),
-    telefone: col("Telefone"),
-    email: col("Email"),
-    dadosPet: col("Dados Pet"),
-    qtdePets: col("Qtde Pets"),
-    caixa: col("Caixa"),
-    respEmbarque: col("ResponsÃ¡vel no Embarque"),
-    telRespEmbarque: col("Telefone Resp Embarque"),
-    pee: col("PEE?"),
-    localEmbarque: col("Local de Embarque"),
-    coleta: col("Coleta"),
-    respDesembarque: col("ResponsÃ¡vel da Desembarque"),
-    telRespDesembarque: col("Telefone Resp Desembarque"),
-    ped: col("PED?"),
-    localDesembarque: col("Local de Desembarque"),
-    valorAcordado: col("Valor acordado"),
-    sinal: col("Sinal"),
-    valorPendente: col("Restante"),
-    obs: col("Obs"),
-    idCadastro: col("IDCadastro")
-  };
-
-  const resultados = [];
-
-  for (let r = 1; r < values.length; r++) {
-    const linha = values[r];
-
-    const camposPrincipais = [
-      val(linha, c.idCadastro), val(linha, c.nome), val(linha, c.telefone),
-      val(linha, c.cpf), val(linha, c.dePara), val(linha, c.dadosPet)
-    ];
-
-    if (!camposPrincipais.join("").trim()) continue;
-
-    const blocoTexto = normalizarBusca_(camposPrincipais.join(" "));
-    const blocoDigitos = somenteDigitos_(camposPrincipais.join(" "));
-
-    const achouTexto = termo && blocoTexto.includes(termo);
-    const achouDigitos = termoDigitos.length >= 3 && blocoDigitos.includes(termoDigitos);
-
-    if (achouTexto || achouDigitos) {
-      resultados.push({
-        linhaEdicao: r + 1,
-        idCadastro: val(linha, c.idCadastro),
-        dataViagem: val(linha, c.dataViagem),
-        dePara: val(linha, c.dePara),
-        sentido: val(linha, c.sentido),
-        nome: val(linha, c.nome),
-        endContratante: val(linha, c.endContratante),
-        cpf: val(linha, c.cpf).replace(/^'/, ""),
-        telefone: val(linha, c.telefone).replace(/^'/, ""),
-        email: val(linha, c.email),
-        dadosPet: val(linha, c.dadosPet),
-        qtdePets: val(linha, c.qtdePets),
-        caixa: val(linha, c.caixa),
-        respEmbarque: val(linha, c.respEmbarque),
-        telRespEmbarque: val(linha, c.telRespEmbarque).replace(/^'/, ""),
-        pee: val(linha, c.pee),
-        localEmbarque: val(linha, c.localEmbarque),
-        coleta: val(linha, c.coleta),
-        respDesembarque: val(linha, c.respDesembarque),
-        telRespDesembarque: val(linha, c.telRespDesembarque).replace(/^'/, ""),
-        ped: val(linha, c.ped),
-        localDesembarque: val(linha, c.localDesembarque),
-        valorAcordado: val(linha, c.valorAcordado),
-        sinal: val(linha, c.sinal),
-        valorPendente: val(linha, c.valorPendente),
-        obs: val(linha, c.obs)
-      });
-
-      if (resultados.length >= 20) break;
-    }
-  }
-
-  return { ok: true, resultados: resultados };
 }
 
 function atualizarDadosCliente_(payload) {
   try {
     const ss = SpreadsheetApp.openById(BP_SS_ID);
     const sh = ss.getSheetByName(BP_SHEETS.DADOS);
-    if (!sh) throw new Error('Aba "DadosClientes" nÃƒÂ£o encontrada.');
+    if (!sh) throw new Error('Aba "DadosClientes" nÃ£o encontrada.');
 
-    const rowIndex = Number(payload.linhaEdicao || payload.rowIndex || payload.linha);
-    if (!rowIndex || rowIndex < 2) {
-      throw new Error("Linha de ediÃƒÂ§ÃƒÂ£o invÃƒÂ¡lida. O clientes.html precisa enviar linhaEdicao.");
-    }
+    const headerMap = getHeaderMapFromSheet_(sh);
+    const rowIndex = localizarLinhaParaAtualizar_(sh, headerMap, payload);
+    if (!rowIndex || rowIndex < 2) throw new Error("Cadastro nÃ£o localizado para atualizaÃ§Ã£o. Busque novamente antes de salvar.");
 
-    if (rowIndex > sh.getLastRow()) {
-      throw new Error("Linha de ediÃƒÂ§ÃƒÂ£o nÃƒÂ£o existe mais na planilha: " + rowIndex);
-    }
+    gravarPayloadDadosClienteNaLinha_(sh, headerMap, rowIndex, payload, { modo: "atualizar", preservarCamposGeradosVazios: true });
 
-    escreverDadosClienteNaLinha_(sh, rowIndex, payload, { preservarContrato: true });
-
-    return { ok: true, message: "Cadastro atualizado Ã¢Å“â€¦", rowIndex: rowIndex };
-
+    return { ok: true, row: rowIndex, idCadastro: payload.idCadastro || "", message: "Cadastro atualizado âœ…" };
   } catch (e) {
-    return { ok: false, message: "Erro ao atualizar: " + (e && e.message ? e.message : e) };
+    return { ok: false, message: "Erro ao atualizar cadastro: " + (e && e.message ? e.message : e) };
   }
 }
 
-function escreverDadosClienteNaLinha_(sh, rowIndex, payload, opcoes) {
+function localizarLinhaParaAtualizar_(sh, headerMap, payload) {
+  const idCadastro = String(payload.idCadastro || "").trim();
+  if (idCadastro) {
+    const idx = findHeaderIndex_(headerMap, "IDCadastro") ?? findHeaderIndex_(headerMap, "ID Cadastro");
+    if (idx === undefined) throw new Error('Coluna "IDCadastro" nÃ£o encontrada.');
+
+    const lastRow = sh.getLastRow();
+    const ids = sh.getRange(2, idx + 1, Math.max(0, lastRow - 1), 1).getDisplayValues();
+    for (let i = 0; i < ids.length; i++) {
+      if (String(ids[i][0] || "").trim().toUpperCase() === idCadastro.toUpperCase()) return i + 2;
+    }
+    throw new Error("IDCadastro nÃ£o encontrado: " + idCadastro);
+  }
+
+  const rowIndex = Number(payload.linhaEdicao || payload.row || payload.linha);
+  if (rowIndex && rowIndex >= 2 && rowIndex <= sh.getLastRow()) return rowIndex;
+  return null;
+}
+
+function gravarPayloadDadosClienteNaLinha_(sh, headerMap, rowIndex, payload, opcoes) {
   opcoes = opcoes || {};
+  const SKIP_COLS = new Set([26]);
 
-  const lastCol = sh.getLastColumn();
-  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
-  if (!headers || headers.length === 0) {
-    throw new Error("CabeÃƒÂ§alho da aba DadosClientes estÃƒÂ¡ vazio.");
-  }
-
-  const headerMap = buildHeaderMap_(headers);
-  const SKIP_COLS = new Set([26]); // mantÃƒÂ©m sua regra original: nÃƒÂ£o escreve na coluna Z
-
-  function setByHeader(headerName, value) {
-    const idx = findHeaderIndex_(headerMap, headerName);
-    if (idx === undefined) return;
-
-    const col = idx + 1;
-    if (SKIP_COLS.has(col)) return;
-
-    sh.getRange(rowIndex, col).setValue(value ?? "");
-  }
-
-  function getByHeader(headerName) {
-    const idx = findHeaderIndex_(headerMap, headerName);
-    if (idx === undefined) return "";
-    return sh.getRange(rowIndex, idx + 1).getValue();
-  }
-
-  const cpfFormatado = normalizarCPF_(payload.cpf);
   const valorAcordado = toNumberBR_(payload.valorAcordado);
   const sinal = toNumberBR_(payload.sinal);
-
   let restante = valorAcordado - sinal;
   if (!isFinite(restante)) restante = 0;
   restante = Math.round(restante);
 
+  function setByHeader(headerName, value, opt) {
+    opt = opt || {};
+    const idx = findHeaderIndex_(headerMap, headerName);
+    if (idx === undefined) return;
+    const col = idx + 1;
+    if (SKIP_COLS.has(col)) return;
+    if (opt.preservarSeVazio && (value === "" || value === null || value === undefined)) return;
+    sh.getRange(rowIndex, col).setValue(value ?? "");
+  }
+
+  setByHeader("IDCadastro", payload.idCadastro);
   setByHeader("Data Viagem", payload.dataViagem);
   setByHeader("DE/PARA", payload.dePara);
   setByHeader("Sentido", payload.sentido);
-
   setByHeader("Nome", payload.nome);
-  setByHeader("EndereÃƒÂ§o do contratante", payload.endContratante);
-  setByHeader("CPF", cpfFormatado ? "'" + cpfFormatado : "");
-  setByHeader("Telefone", payload.telefone);
+  setByHeader("Endereço do contratante", payload.endContratante);
+  //setByHeader("CPF", payload.cpf ? "'" + normalizarCPF_(payload.cpf) : "");
+  setByHeader("CPF", payload.cpf ? normalizarCPF_(payload.cpf) : "");
+  setByHeader("Telefone", payload.telefone ? "'" + limparTelefoneTexto_(payload.telefone) : "");
   setByHeader("Email", payload.email);
-
   setByHeader("Dados Pet", payload.dadosPet);
   setByHeader("Qtde Pets", payload.qtdePets);
   setByHeader("Caixa", payload.caixa);
-
-  setByHeader("ResponsÃƒÂ¡vel no Embarque", payload.respEmbarque);
-  setByHeader("Telefone Resp Embarque", payload.telRespEmbarque);
+  setByHeader("Responsável no Embarque", payload.respEmbarque);
+  setByHeader("Telefone Resp Embarque", payload.telRespEmbarque ? "'" + limparTelefoneTexto_(payload.telRespEmbarque) : "");
   setByHeader("PEE?", payload.pee);
   setByHeader("Local de Embarque", payload.localEmbarque);
   setByHeader("Coleta", payload.coleta);
-
-  setByHeader("ResponsÃƒÂ¡vel da Desembarque", payload.respDesembarque);
-  setByHeader("Telefone Resp Desembarque", payload.telRespDesembarque);
+  setByHeader("Responsável da Desembarque", payload.respDesembarque);
+  setByHeader("Telefone Resp Desembarque", payload.telRespDesembarque ? "'" + limparTelefoneTexto_(payload.telRespDesembarque) : "");
   setByHeader("PED?", payload.ped);
   setByHeader("Local de Desembarque", payload.localDesembarque);
-
   setByHeader("Valor acordado", valorAcordado);
   setByHeader("Sinal", sinal);
   setByHeader("Restante", restante);
-
   setByHeader("Obs", payload.obs);
 
-  // Em atualizaÃƒÂ§ÃƒÂ£o, nÃƒÂ£o apaga contrato/link/status jÃƒÂ¡ existentes se o payload vier vazio.
-  const preservar = !!opcoes.preservarContrato;
-
-  const linkContrato = preservar && !payload.linkContrato
-    ? getByHeader("Link Contrato")
-    : payload.linkContrato;
-
-  const enviado = preservar && !payload.enviado
-    ? getByHeader("Enviado?")
-    : payload.enviado;
-
-  const contratoGerado = preservar && !payload.contratoGerado
-    ? getByHeader("ContratoGerado")
-    : payload.contratoGerado;
-
-  const falta = preservar && !payload.falta
-    ? getByHeader("falta")
-    : payload.falta;
-
-  setByHeader("Link Contrato", linkContrato);
-  setByHeader("Enviado?", enviado);
-  setByHeader("ContratoGerado", contratoGerado);
-  setByHeader("falta", falta);
+  const preservar = !!opcoes.preservarCamposGeradosVazios;
+  setByHeader("Link Contrato", payload.linkContrato, { preservarSeVazio: preservar });
+  setByHeader("Enviado?", payload.enviado, { preservarSeVazio: preservar });
+  setByHeader("ContratoGerado", payload.contratoGerado, { preservarSeVazio: preservar });
+  setByHeader("Restante", payload.falta, { preservarSeVazio: preservar });
 }
 
-/***************
- * CRM
- ***************/
 function salvarOrcamentoCRM_(dados) {
   try {
     const ss = SpreadsheetApp.openById(BP_SS_ID);
-
     const agora = new Date();
     const proximo = new Date(agora);
     proximo.setDate(proximo.getDate() + 3);
-
     const id = dados.id || ("ORC" + Utilities.getUuid().slice(0, 8).toUpperCase());
 
-    const registro = {
+    salvarLinhaPorCabecalho_(ss, "ORCAMENTOS_CRM", {
       ID: id,
       DataOrcamento: dados.dataOrcamento || agora,
       Nome: dados.nome || "",
@@ -434,77 +285,99 @@ function salvarOrcamentoCRM_(dados) {
       OrigemLead: dados.origemLead || "",
       DataViagem: dados.dataViagem || "",
       MensagemWhatsApp: dados.mensagemWhatsApp || ""
-    };
-
-    salvarLinhaPorCabecalho_(ss, "ORCAMENTOS_CRM", registro);
-
-    salvarLinhaPorCabecalho_(ss, "FOLLOWUP", {
-      Nome: registro.Nome,
-      Telefone: registro.Telefone,
-      "Dias sem Contato": 0,
-      Status: registro.Status
     });
 
-    return { ok: true, message: "OrÃƒÂ§amento salvo no CRM e FOLLOWUP Ã¢Å“â€¦" };
+    salvarLinhaPorCabecalho_(ss, "FOLLOWUP", {
+      Nome: dados.nome || "",
+      Telefone: dados.telefone || "",
+      "Dias sem Contato": 0,
+      Status: dados.status || "Aguardando"
+    });
 
+    return { ok: true, message: "OrÃ§amento salvo no CRM e FOLLOWUP âœ…" };
   } catch (e) {
-    return { ok: false, message: "Erro ao salvar orÃƒÂ§amento CRM: " + (e && e.message ? e.message : e) };
+    return { ok: false, message: "Erro ao salvar orÃ§amento CRM: " + (e && e.message ? e.message : e) };
   }
 }
 
 function salvarLinhaPorCabecalho_(ss, nomeAba, registro) {
   const sh = ss.getSheetByName(nomeAba);
-  if (!sh) throw new Error('Aba "' + nomeAba + '" nÃƒÂ£o encontrada.');
-
-  const lastCol = sh.getLastColumn();
-  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
-  const headerMap = buildHeaderMap_(headers);
-
+  if (!sh) throw new Error('Aba "' + nomeAba + '" nÃ£o encontrada.');
+  const headerMap = getHeaderMapFromSheet_(sh);
   const lastRow = sh.getLastRow();
   sh.insertRowAfter(lastRow);
   const rowIndex = lastRow + 1;
-
-  Object.keys(registro).forEach(function(campo) {
+  Object.keys(registro).forEach(campo => {
     const idx = findHeaderIndex_(headerMap, campo);
-    if (idx !== undefined) {
-      sh.getRange(rowIndex, idx + 1).setValue(registro[campo]);
-    }
+    if (idx !== undefined) sh.getRange(rowIndex, idx + 1).setValue(registro[campo]);
   });
 }
 
-/***************
- * Helpers
- ***************/
-
-function normalizarBusca_(v) {
-  return String(v || "")
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^\w\s@.+/-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+function getHeaderMapFromSheet_(sh) {
+  const lastCol = sh.getLastColumn();
+  const headers = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (!headers || headers.length === 0) throw new Error("CabeÃ§alho da aba " + sh.getName() + " estÃ¡ vazio.");
+  return buildHeaderMap_(headers);
 }
 
-function somenteDigitos_(v) {
-  return String(v || "").replace(/\D/g, "");
+function cellFlex_(rowDisplay, rowValues, headerMap, nomes) {
+  for (let i = 0; i < nomes.length; i++) {
+    const idx = findHeaderIndex_(headerMap, nomes[i]);
+    if (idx === undefined) continue;
+    const display = rowDisplay && rowDisplay[idx] !== null && rowDisplay[idx] !== undefined ? String(rowDisplay[idx]).trim() : "";
+    if (display) return display;
+    const raw = rowValues && rowValues[idx] !== null && rowValues[idx] !== undefined ? String(rowValues[idx]).trim() : "";
+    if (raw) return raw;
+  }
+  return "";
+}
+
+function montarDebugCamposLinha_(rowDisplay, rowValues, headers) {
+  const campos = [];
+  for (let i = 0; i < headers.length; i++) {
+    const header = headers[i] === null || headers[i] === undefined ? "" : String(headers[i]).trim();
+    if (!header) continue;
+    campos.push({
+      coluna: i + 1,
+      cabecalho: header,
+      display: rowDisplay && rowDisplay[i] !== null && rowDisplay[i] !== undefined ? String(rowDisplay[i]) : "",
+      bruto: rowValues && rowValues[i] !== null && rowValues[i] !== undefined ? String(rowValues[i]) : ""
+    });
+  }
+  return campos;
+}
+
+function gerarProximoIDCadastro_(sh, headerMap) {
+  const idx = findHeaderIndex_(headerMap, "IDCadastro") ?? findHeaderIndex_(headerMap, "ID Cadastro");
+  if (idx === undefined) return "ID-" + Utilities.getUuid().slice(0, 8).toUpperCase();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return "ID-001";
+  const ids = sh.getRange(2, idx + 1, lastRow - 1, 1).getDisplayValues();
+  let maior = 0;
+  ids.forEach(r => {
+    const m = String(r[0] || "").trim().match(/^ID-(\d+)$/i);
+    if (m) maior = Math.max(maior, Number(m[1]));
+  });
+  return "ID-" + String(maior + 1).padStart(3, "0");
 }
 
 function normalizarCPF_(cpf) {
-  if (cpf === null || cpf === undefined) return "";
-  const apenasNumeros = String(cpf).replace(/\D/g, "");
+  const apenasNumeros = String(cpf || "").replace(/\D/g, "");
   if (!apenasNumeros) return "";
   return apenasNumeros.padStart(11, "0").slice(-11);
 }
 
+function limparTelefoneTexto_(v) {
+  return String(v || "").replace(/[^\d+]/g, "");
+}
+
+function limparApostrofo_(v) {
+  return String(v || "").replace(/^'/, "").trim();
+}
+
 function toNumberBR_(v) {
   if (v === null || v === undefined || v === "") return 0;
-
-  const s = String(v)
-    .trim()
-    .replace(/[R$\s]/g, "")
-    .replace(/\./g, "")
-    .replace(",", ".");
-
+  const s = String(v).trim().replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", ".");
   const n = Number(s);
   return isNaN(n) ? 0 : n;
 }
@@ -521,21 +394,41 @@ function buildHeaderMap_(headers) {
 function findHeaderIndex_(headerMap, headerName) {
   const base = normHeader_(headerName);
   if (headerMap[base] !== undefined) return headerMap[base];
-
   const semInterrogacao = base.replace(/\?/g, "").trim();
   if (headerMap[semInterrogacao] !== undefined) return headerMap[semInterrogacao];
-
-  const comInterrogacao = (semInterrogacao + "?").replace(/\s+/g, " ").trim();
-  if (headerMap[comInterrogacao] !== undefined) return headerMap[comInterrogacao];
-
   return undefined;
 }
 
 function normHeader_(s) {
-  if (s === null || s === undefined) return "";
-  return String(s)
+  return String(s || "")
     .trim()
     .toLowerCase()
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\?/g, "")
     .replace(/\s+/g, " ");
+}
+
+function normalizarBusca_(s) {
+  return String(s || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\w\s@.+\/-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function somenteDigitos_(s) {
+  return String(s || "").replace(/\D/g, "");
+}
+
+function jsonOutput_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function jsonpOutput_(obj, callback) {
+  callback = String(callback || "").replace(/[^a-zA-Z0-9_$\.]/g, "");
+  if (callback) {
+    return ContentService.createTextOutput(callback + "(" + JSON.stringify(obj) + ");").setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return jsonOutput_(obj);
 }

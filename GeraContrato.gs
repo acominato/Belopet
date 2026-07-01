@@ -1,20 +1,30 @@
+/***************
+ * GeraContrato.gs â€” BeloPet
+ * GeraÃ§Ã£o de contratos a partir da aba DadosClientes
+ * Usa IDCadastro no nome do arquivo e nÃ£o exige CPF para gerar.
+ ***************/
+
 function gerarContratos() {
   function dataPorExtenso() {
     const agora = new Date();
     const meses = [
-      "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+      "janeiro", "fevereiro", "marÃ§o", "abril", "maio", "junho",
       "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
     ];
     return `${agora.getDate()} de ${meses[agora.getMonth()]} de ${agora.getFullYear()}`;
   }
 
   function formatarCPF(cpf) {
-    const limpo = String(cpf || "").replace(/\D/g, "").padStart(11, "0").slice(-11);
-    return limpo.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+    const limpo = String(cpf || "").replace(/\D/g, "");
+    if (!limpo) return "";
+    const cpf11 = limpo.padStart(11, "0").slice(-11);
+    return cpf11.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
   }
 
   function formatarReal(valor) {
-    const n = Number(valor || 0);
+    if (valor === "" || valor === null || valor === undefined) return "";
+    const n = Number(String(valor).replace(/R\$|\s/g, "").replace(/\./g, "").replace(",", "."));
+    if (isNaN(n)) return String(valor || "");
     return "R$ " + n.toFixed(2).replace(".", ",");
   }
 
@@ -26,18 +36,29 @@ function gerarContratos() {
     return "\\{\\{\\s*" + escapeRegex(campo) + "\\s*\\}\\}";
   }
 
+  function limparNomeArquivo(s) {
+    return String(s || "")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9_-]+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "")
+      .slice(0, 80);
+  }
+
   const dataAtual = dataPorExtenso();
   const agora = new Date();
-  const horaAtual = Utilities.formatDate(agora, Session.getScriptTimeZone(), "HHmmss");
+  const horaAtual = Utilities.formatDate(agora, Session.getScriptTimeZone(), "yyyyMMdd_HHmmss");
 
   const idTemplate = "1Vls-WIPUu-Fpi8U3fGdstBtr_RbtGGELHetlNc3Bs3g";
   const pastaDestinoId = "1Gj4no1L7dYIgZU-B0VB7XCsPIo144pPU";
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const aba = ss.getSheetByName("DadosClientes");
-  if (!aba) throw new Error('Aba "DadosClientes" não encontrada.');
+  if (!aba) throw new Error('Aba "DadosClientes" nÃ£o encontrada.');
 
-  const dados = aba.getDataRange().getValues();
+  const range = aba.getDataRange();
+  const dados = range.getValues();
+  const dadosDisplay = range.getDisplayValues();
   if (!dados || dados.length < 2) {
     ss.toast("Nada a processar.", "Gerar Contratos", 5);
     return;
@@ -45,15 +66,18 @@ function gerarContratos() {
 
   const cabecalhos = dados[0].map(h => String(h).trim());
 
-  function idx(nome) {
-    const i = cabecalhos.indexOf(nome);
-    if (i === -1) throw new Error(`Cabeçalho não encontrado: "${nome}"`);
+  function idx(nome, obrigatorio) {
+    const alvo = normalizarCabecalhoContrato_(nome);
+    const i = cabecalhos.findIndex(h => normalizarCabecalhoContrato_(h) === alvo);
+    if (i === -1 && obrigatorio !== false) throw new Error(`CabeÃ§alho nÃ£o encontrado: "${nome}"`);
     return i;
   }
 
-  const idxCPF = idx("CPF");
-  const idxContratoGerado = idx("ContratoGerado");
-  const idxLinkContrato = idx("Link Contrato");
+  const idxID = idx("IDCadastro", false);
+  const idxCPF = idx("CPF", false);
+  const idxNome = idx("Nome", false);
+  const idxContratoGerado = idx("ContratoGerado", true);
+  const idxLinkContrato = idx("Link Contrato", true);
 
   const modelo = DriveApp.getFileById(idTemplate);
   const pastaDestino = DriveApp.getFolderById(pastaDestinoId);
@@ -64,22 +88,29 @@ function gerarContratos() {
 
   for (let i = 1; i < dados.length; i++) {
     const linha = dados[i];
+    const linhaDisplay = dadosDisplay[i];
     const linhaPlanilha = i + 1;
 
-    const cpfRaw = String(linha[idxCPF] || "").replace(/\D/g, "");
-    const statusContrato = String(linha[idxContratoGerado] || "").trim().toUpperCase();
-
+    const statusContrato = String(linhaDisplay[idxContratoGerado] || "").trim().toUpperCase();
     const statusOkParaGerar = statusContrato === "" || statusContrato === "A";
-
-    if (!cpfRaw || cpfRaw.length > 11 || !statusOkParaGerar) {
+    if (!statusOkParaGerar) {
       pulados++;
       continue;
     }
 
-    const cpf11 = cpfRaw.padStart(11, "0");
+    const idCadastro = idxID >= 0 ? String(linhaDisplay[idxID] || "").trim() : "";
+    const nomeCliente = idxNome >= 0 ? String(linhaDisplay[idxNome] || "").trim() : "";
+
+    // Evita gerar contrato de linhas vazias.
+    if (!idCadastro && !nomeCliente) {
+      pulados++;
+      continue;
+    }
 
     try {
-      const nomeContrato = `ContratoBelopet_${cpf11}_${horaAtual}`;
+      const cpfDisplay = idxCPF >= 0 ? String(linhaDisplay[idxCPF] || "").trim() : "";
+      const idOuLinha = idCadastro || ("LINHA-" + linhaPlanilha);
+      const nomeContrato = `ContratoBelopet_${limparNomeArquivo(idOuLinha)}_${horaAtual}`;
 
       const copia = modelo.makeCopy(nomeContrato, pastaDestino);
       const contrato = DocumentApp.openById(copia.getId());
@@ -87,15 +118,18 @@ function gerarContratos() {
 
       cabecalhos.forEach((campo, j) => {
         let valor = linha[j];
+        let valorDisplay = linhaDisplay[j];
 
         if (campo === "Valor acordado" || campo === "Sinal" || campo === "Restante") {
-          valor = formatarReal(valor);
+          valor = formatarReal(valorDisplay || valor);
         } else if (campo === "PEE" || campo === "PEE?" || campo === "PED" || campo === "PED?") {
-          valor = String(valor).trim().toUpperCase() === "S" ? "Sim" : "Não";
+          valor = String(valorDisplay || valor).trim().toUpperCase() === "S" ? "Sim" : "NÃ£o";
         } else if (campo === "CPF") {
-          valor = formatarCPF(cpf11);
+          valor = formatarCPF(valorDisplay || valor);
         } else if (valor instanceof Date) {
           valor = Utilities.formatDate(valor, Session.getScriptTimeZone(), "dd/MM/yyyy");
+        } else if (valorDisplay !== undefined && valorDisplay !== null && valorDisplay !== "") {
+          valor = valorDisplay;
         } else if (valor === undefined || valor === null) {
           valor = "";
         }
@@ -119,14 +153,13 @@ function gerarContratos() {
 
       try {
         aba.getRange(linhaPlanilha, idxLinkContrato + 1)
-          .setFormula(`=HYPERLINK("${urlContrato}"; "📄 Ver contrato")`);
+          .setFormula(`=HYPERLINK("${urlContrato}"; "ðŸ“„ Ver contrato")`);
       } catch (e) {
         aba.getRange(linhaPlanilha, idxLinkContrato + 1).setValue(urlContrato);
       }
 
       aba.getRange(linhaPlanilha, idxContratoGerado + 1).setValue("G");
       gerados++;
-
     } catch (err) {
       falhas++;
       Logger.log(`Erro na linha ${linhaPlanilha}: ${err && err.message ? err.message : err}`);
@@ -138,4 +171,13 @@ function gerarContratos() {
     "Gerar Contratos",
     8
   );
+}
+
+function normalizarCabecalhoContrato_(s) {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\?/g, "")
+    .replace(/\s+/g, " ");
 }
