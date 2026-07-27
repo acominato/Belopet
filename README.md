@@ -13,3 +13,16 @@ Clientes.gs
 → recebe as chamadas das telas
 → chama o ContratoWeb.gs
 → será onde adicionaremos a consulta ao tarifário
+
+HTML Calculadora
+        │
+        ▼
+Clientes.gs   ← único WebApp
+        │
+        ├── DadosClientes
+        ├── PontosEncontro
+        ├── DENIT      ← vamos adicionar
+        ├── ContratoWeb.gs
+        └── CRM
+
+        
